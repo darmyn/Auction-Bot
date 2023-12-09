@@ -1,22 +1,44 @@
-import os
-import requests
+from modules import targetScraper, productCrawler, util
 import openpyxl
-import config
-from util import parsingUtil
+from openpyxl.styles import NamedStyle
+from urllib.parse import quote
+import requests
 
-TARGET_DOMAIN = "kotnauction.com"
-TARGET_PAGE = "auction"
-TARGET_URL = f"https://{TARGET_DOMAIN}/{TARGET_PAGE}"
-USERNAME = os.getenv("USERNAME")
-PASSWORD = os.getenv("PASSWORD")
-HTML_CONTENT = requests.get(TARGET_URL).content
+util.open_file("legal/TOS.txt")
 
-category_to_fetch = config.TARGET_CATEGORIES[0]
-category_element = parsingUtil.get_element_for_category(HTML_CONTENT, category_to_fetch)
+if input("Type `Y` to agree to the terms of service and continue using the application").lower() == "y":
+    target_url = targetScraper.get_initial_url()
 
-if category_element:
-    print(f"Category: {category_to_fetch.name}")
-    print(f"Element Text: {category_element.text}")
-    print(f"Element Href: {category_element['href']}")
-else:
-    print(f"No element found for category: {category_to_fetch.name}")
+    page = requests.get(target_url)
+
+    productUrls = targetScraper.get_product_urls(page.content)
+    auction_dates = targetScraper.get_auction_dates()
+    num_active_listings = targetScraper.get_num_active_listings()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    # Set the headers in the first row of the sheet
+    headers = ["Product URL", "Product Title", "Current Bid"]
+    ws.append(headers)
+
+    for productUrl in productUrls:
+
+        scraped_summary = targetScraper.get_product_summary(productUrl)
+        crawled_summary = productCrawler.get_product_summary(productUrl)
+
+        productTitle = scraped_summary["title"]
+        currentBid = crawled_summary["current-bid"]
+
+        # Only consider products with currentBid == "$0"
+        if currentBid == "$5":
+            # Shorten the hyperlink for productUrl
+            short_url = f'=HYPERLINK("{productUrl}","Link")'
+
+            # Append data to the sheet
+            ws.append([short_url, productTitle, currentBid])
+
+
+    # Save the workbook to a file
+    wb.save("output/products.xlsx")
+
